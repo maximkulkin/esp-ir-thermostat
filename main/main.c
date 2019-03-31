@@ -111,33 +111,35 @@ homekit_characteristic_t fan_swing_mode = HOMEKIT_CHARACTERISTIC_(
 
 
 void update_state() {
+    homekit_value_t new_fan_active, new_current_state;
     uint8_t state = target_state.value.int_value;
 
     ac_state.command = ac_cmd_turn_on;
     if (state == 1) {
         ac_state.mode = ac_mode_heat;
-        current_state.value = HOMEKIT_UINT8(1);
-        fan_active.value = HOMEKIT_UINT8(1);
+        new_current_state = HOMEKIT_UINT8(1);
+        new_fan_active = HOMEKIT_UINT8(1);
     } else if (state == 2) {
         ac_state.mode = ac_mode_cool;
-        current_state.value = HOMEKIT_UINT8(2);
-        fan_active.value = HOMEKIT_UINT8(1);
+        new_current_state = HOMEKIT_UINT8(2);
+        new_fan_active = HOMEKIT_UINT8(1);
     } else if (state == 3) {
         ac_state.mode = ac_mode_auto;
         if (current_temperature.value.int_value < target_temperature.value.int_value) {
-            current_state.value = HOMEKIT_UINT8(1);
+            new_current_state = HOMEKIT_UINT8(1);
         } else {
-            current_state.value = HOMEKIT_UINT8(2);
+            new_current_state = HOMEKIT_UINT8(2);
         }
-        fan_active.value = HOMEKIT_UINT8(1);
+        new_fan_active = HOMEKIT_UINT8(1);
     } else if (state == 0 && fan) {
         ac_state.mode = ac_mode_fan;
-        current_state.value = HOMEKIT_UINT8(0);
-        fan_active.value = HOMEKIT_UINT8(1);
+        new_current_state = HOMEKIT_UINT8(0);
+        new_fan_active = HOMEKIT_UINT8(1);
     } else {
         ac_state.mode = ac_mode_auto;
         ac_state.command = ac_cmd_turn_off;
-        current_state.value = HOMEKIT_UINT8(0);
+        new_current_state = HOMEKIT_UINT8(0);
+        new_fan_active = HOMEKIT_UINT8(0);
     }
 
     uint8_t rotation_speed = fan_rotation_speed.value.int_value;
@@ -155,6 +157,16 @@ void update_state() {
     ac_state.swing = fan_swing_mode.value.int_value ? ac_swing_vert : ac_swing_off;
 
     fujitsu_ac_ir_send(&ac_state);
+
+    if (!homekit_value_equal(&new_current_state, &current_state.value)) {
+        current_state.value = new_current_state;
+        homekit_characteristic_notify(&current_state, current_state.value);
+    }
+
+    if (!homekit_value_equal(&new_fan_active, &fan_active.value)) {
+        fan_active.value = new_fan_active;
+        homekit_characteristic_notify(&fan_active, fan_active.value);
+    }
 }
 
 
