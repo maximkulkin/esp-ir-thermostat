@@ -22,6 +22,8 @@ static ir_generic_config_t fujitsu_ac_ir_config = {
 
     .footer_mark = 400,
     .footer_space = -8000,
+
+    .tolerance = 20,
 };
 
 
@@ -100,3 +102,118 @@ int fujitsu_ac_ir_send(fujitsu_ac_state_t *state) {
     return ir_generic_send(&fujitsu_ac_ir_config, cmd, cmd_size * 8);
 }
 
+
+typedef struct {
+    ir_decoder_t decoder;
+    ir_decoder_t *generic_decoder;
+} fujitsu_ac_ir_decoder_t;
+
+
+static int fujitsu_ac_ir_decoder_decode(fujitsu_ac_ir_decoder_t *decoder,
+                                        int16_t *pulses, uint16_t pulse_count,
+                                        void *decoded_data, uint16_t *decoded_size)
+{
+    if (*decoded_size != sizeof(fujitsu_ac_state_t))
+        return -2;
+
+    fujitsu_ac_state_t *state = decoded_data;
+
+    uint8_t cmd[16];
+    uint16_t cmd_size = 16 * 8;
+    int r = decoder->generic_decoder->decode(
+        decoder->generic_decoder, pulses, pulse_count, cmd, &cmd_size
+    );
+    if (r <= 0)
+        return r;
+
+    cmd_size = (cmd_size + 7) >> 3;
+
+    if (cmd_size < 6)
+        return -1;
+
+    if (cmd[0] != 0x14 || cmd[1] != 0x63 || cmd[2] != 0x00 || cmd[3] != 0x10 || cmd[4] != 0x10)
+        return -1;
+
+    switch (cmd[5]) {
+    case ac_cmd_turn_off:
+    case ac_cmd_step_horiz:
+    case ac_cmd_step_vert:
+        if ((cmd_size == 7) && (cmd[6] != (~cmd[5] & 0xff))) {
+            return -1;
+        else if (cmd_size > 7)
+            return -1;
+
+        state->command = cmd[5];
+
+        break;
+    case 0xfe:   // full state model ARRAH2E
+    case 0xfc: { // full state model ARDB1
+        fujitsu_ac_model model = (cmd[5] == 0xfe) ? fujitsu_ac_model_ARRAH2E : fujitsu_ac_model_ARDB1;
+        if (cmd[6] != 9 || cmd[7] != 0x30)
+            return -1;
+
+        uint8_t checksum = 0;
+        switch (model) {
+        case fujitsu_ac_model_ARRAH2E:
+            if (cmd[14] != 0x20 || cmd_size != 16)
+                return -1;
+
+            for (int i=7; i < 15; i++)
+                checksum += cmd[i];
+
+            if (cmd[15] != (-checksum & 0xff))
+                return -1;
+
+            break;
+
+        case fujitsu_ac_model_ARDB1:
+            if (cmd_size != 15)
+                return -1;
+
+            for (int i=0; i < 14; i++)
+                checksum += cmd[i];
+
+            if (cmd[14] != ((0x9B - checksum) & 0xff))
+                return -1;
+
+            break;
+        }
+
+        state->command = cmd[8] && 0xf;
+        state->temperature = AC_MIN_TEMPERATURE + (cmd[8] >> 4);
+        state->mode = cmd[9] & 0xf;
+        state->fan = cmd[10] & 0xf;
+        state->swing = cmd[10] >> 4;
+
+        break;
+    }
+    default:
+        return -1;
+    }
+
+    return sizeof(fujitsu_ac_state_t);
+}
+
+
+static void fujitsu_ac_ir_decoder_free(fujitsu_ac_ir_decoder_t *decoder) {
+    decoder->generic_decoder->free(decoder->generic_decoder);
+    free(decoder);
+}
+
+
+ir_decoder_t *fujitsu_ac_ir_make_decoder() {
+    fujitsu_ac_ir_decoder_t *decoder = malloc(sizeof(fujitsu_ac_ir_decoder_t));
+    if (!decoder)
+        return NULL;
+
+    decoder->generic_decoder = ir_generic_make_decoder(&fujitsu_ac_ir_config);
+    if (!decoder->generic_decoder) {
+        free(decoder);
+        return NULL;
+    }
+
+    decoder->decoder.decode = (ir_decoder_decode_t) fujitsu_ac_ir_decoder_decode;
+    decoder->decoder.free = (ir_decoder_free_t) fujitsu_ac_ir_decoder_free;
+
+    return (ir_decoder_t*) decoder;
+}

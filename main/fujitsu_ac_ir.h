@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stddef.h>
+#include <ir/ir.h>
+
 
 typedef enum {
     fujitsu_ac_model_ARRAH2E = 1,
@@ -58,3 +60,4 @@ typedef struct {
 void fujitsu_ac_ir_tx_init(fujitsu_ac_model ac_model);
 int fujitsu_ac_ir_send(fujitsu_ac_state_t *state);
 
+ir_decoder_t *fujitsu_ac_ir_make_decoder();

@@ -22,6 +22,7 @@
 #define TEMPERATURE_POLL_PERIOD 10000
 #define TEMPERATURE_SENSOR_GPIO 4
 #define LED_GPIO 2
+#define IR_RX_GPIO 12
 
 
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
@@ -153,7 +154,7 @@ void update_state() {
         ac_state.fan = ac_fan_quiet;
     }
 
-    ac_state.temperature = MIN(AC_MAX_TEMPERATURE, MAX(AC_MIN_TEMPERATURE, target_temperature.value.int_value));
+    ac_state.temperature = MIN(AC_MAX_TEMPERATURE, MAX(AC_MIN_TEMPERATURE, target_temperature.value.float_value));
     ac_state.swing = fan_swing_mode.value.int_value ? ac_swing_vert : ac_swing_off;
 
     fujitsu_ac_ir_send(&ac_state);
@@ -192,6 +193,100 @@ void temperature_sensor_task(void *_args) {
 
         vTaskDelay(TEMPERATURE_POLL_PERIOD / portTICK_PERIOD_MS);
     }
+}
+
+
+void ir_rx_task(void *_args) {
+    printf("Running IR task\n");
+    ir_decoder_t *decoder = fujitsu_ac_ir_make_decoder();
+
+    fujitsu_ac_state_t state;
+    while (true) {
+        uint16_t size = sizeof(state);
+        int r = ir_recv(decoder, 0, &state, &size);
+        if (r < 0) {
+            printf("Bit decoding failed\n");
+            continue;
+        }
+
+        printf("Decoded IR command\n");
+
+        ac_state = state;
+
+        homekit_value_t new_target_state, new_fan_active;
+        if (state.command == ac_cmd_turn_off) {
+            fan = 0;
+            new_target_state = HOMEKIT_UINT8(0);
+            new_fan_active = HOMEKIT_UINT8(0);
+        } else if (state.command == ac_cmd_turn_on || state.command == ac_cmd_stay_on) {
+            fan = 0;
+            switch (state.mode) {
+            case ac_mode_heat:
+                new_target_state = HOMEKIT_UINT8(1);
+                break;
+            case ac_mode_cool:
+                new_target_state = HOMEKIT_UINT8(2);
+                break;
+            case ac_mode_auto:
+                new_target_state = HOMEKIT_UINT8(3);
+                break;
+            case ac_mode_dry:
+            case ac_mode_fan:
+                new_target_state = HOMEKIT_UINT8(0);
+                break;
+            }
+
+            new_fan_active = HOMEKIT_UINT8(1);
+
+            homekit_value_t new_target_temperature = HOMEKIT_FLOAT(state.temperature);
+            homekit_value_t new_fan_rotation_speed;
+            switch (state.fan) {
+            case ac_fan_auto:
+            case ac_fan_high:
+                new_fan_rotation_speed = HOMEKIT_FLOAT(100);
+                break;
+            case ac_fan_med:
+                new_fan_rotation_speed = HOMEKIT_FLOAT(75);
+                break;
+            case ac_fan_low:
+                new_fan_rotation_speed = HOMEKIT_FLOAT(45);
+                break;
+            case ac_fan_quiet:
+                new_fan_rotation_speed = HOMEKIT_FLOAT(15);
+                break;
+            }
+            homekit_value_t new_fan_swing_mode = HOMEKIT_UINT8((state.swing == ac_swing_off) ? 0 : 1);
+
+            if (!homekit_value_equal(&new_target_temperature, &target_temperature.value)) {
+                target_temperature.value = new_target_temperature;
+                homekit_characteristic_notify(&target_temperature, target_temperature.value);
+            }
+
+            if (!homekit_value_equal(&new_fan_rotation_speed, &fan_rotation_speed.value)) {
+                fan_rotation_speed.value = new_fan_rotation_speed;
+                homekit_characteristic_notify(&fan_rotation_speed, fan_rotation_speed.value);
+            }
+
+            if (!homekit_value_equal(&new_fan_swing_mode, &fan_swing_mode.value)) {
+                fan_swing_mode.value = new_fan_swing_mode;
+                homekit_characteristic_notify(&fan_swing_mode, fan_swing_mode.value);
+            }
+        }
+
+        if (!homekit_value_equal(&new_target_state, &target_state.value)) {
+            target_state.value = new_target_state;
+            homekit_characteristic_notify(&target_state, target_state.value);
+        }
+
+        if (!homekit_value_equal(&new_fan_active, &fan_active.value)) {
+            fan_active.value = new_fan_active;
+            homekit_characteristic_notify(&fan_active, fan_active.value);
+        }
+    }
+
+    decoder->free(decoder);
+
+    vTaskDelete(NULL);
 }
 
 
@@ -282,8 +377,6 @@ void user_init(void) {
 
     wifi_config_init("fujitsu-ac", NULL, on_wifi_ready);
 
-    xTaskCreate(temperature_sensor_task, "Thermostat", 256, NULL, 2, NULL);
-
     ac_state.command = ac_cmd_turn_off;
     ac_state.temperature = 22;
     ac_state.mode = ac_mode_auto;
@@ -292,5 +385,9 @@ void user_init(void) {
     ac_state.swing = ac_swing_off;
 
     fujitsu_ac_ir_tx_init(fujitsu_ac_model_ARRAH2E);
+    ir_rx_init(IR_RX_GPIO, 300);
     update_state();
+
+    xTaskCreate(temperature_sensor_task, "Thermostat", 256, NULL, 2, NULL);
+    xTaskCreate(ir_rx_task, "IR receiver", 1024, NULL, 2, NULL);
 }
