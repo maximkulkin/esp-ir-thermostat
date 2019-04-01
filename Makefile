@@ -5,7 +5,7 @@ EXTRA_COMPONENTS = \
 	extras/http-parser \
 	extras/dhcpserver \
 	extras/dht \
-	$(abspath components/ir_i2s) \
+	$(abspath components/ir) \
 	$(abspath components/wifi-config) \
 	$(abspath components/wolfssl) \
 	$(abspath components/cjson) \

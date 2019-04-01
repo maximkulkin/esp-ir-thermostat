@@ -4,25 +4,29 @@
 #include <stdlib.h>
 
 #include "fujitsu_ac_ir.h"
-#include <ir_i2s.h>
+#include <ir/ir.h>
+#include <ir/generic.h>
 
 
 
 static fujitsu_ac_model model;
-static ir_config_t fujitsu_ac_ir_config = {
+static ir_generic_config_t fujitsu_ac_ir_config = {
     .header_mark = 3200,
-    .header_space = 1600,
+    .header_space = -1600,
+
     .bit1_mark = 400,
-    .bit1_space = 1200,
+    .bit1_space = -1200,
+
     .bit0_mark = 400,
-    .bit0_space = 400,
+    .bit0_space = -400,
+
     .footer_mark = 400,
-    .footer_space = 8000,
+    .footer_space = -8000,
 };
 
 
-void fujitsu_ac_ir_init(fujitsu_ac_model ac_model) {
-    ir_init(&fujitsu_ac_ir_config);
+void fujitsu_ac_ir_tx_init(fujitsu_ac_model ac_model) {
+    ir_tx_init();
     model = ac_model;
 }
 
@@ -93,6 +97,6 @@ int fujitsu_ac_ir_send(fujitsu_ac_state_t *state) {
     printf("State: command=%d mode=%d fan=%d swing=%d temperature=%d\n",
            state->command, state->mode, state->fan, state->swing, state->temperature);
 
-    return ir_send(cmd, cmd_size * 8);
+    return ir_generic_send(&fujitsu_ac_ir_config, cmd, cmd_size * 8);
 }
 

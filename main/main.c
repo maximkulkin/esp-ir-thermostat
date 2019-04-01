@@ -291,6 +291,6 @@ void user_init(void) {
     ac_state.fan = ac_fan_auto;
     ac_state.swing = ac_swing_off;
 
-    fujitsu_ac_ir_init(fujitsu_ac_model_ARRAH2E);
+    fujitsu_ac_ir_tx_init(fujitsu_ac_model_ARRAH2E);
     update_state();
 }

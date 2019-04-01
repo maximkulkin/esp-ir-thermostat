@@ -10,6 +10,6 @@
 [submodule "components/wifi-config"]
 	path = components/wifi-config
 	url = https://github.com/maximkulkin/esp-wifi-config.git
-[submodule "components/ir_i2s"]
-	path = components/ir_i2s
-	url = https://github.com/maximkulkin/esp-ir-i2s.git
+[submodule "components/ir"]
+	path = components/ir
+	url = https://github.com/maximkulkin/esp-ir

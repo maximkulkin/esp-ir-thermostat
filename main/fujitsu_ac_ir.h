@@ -9,6 +9,7 @@ typedef enum {
 
 
 typedef enum {
+    ac_cmd_stay_on = 0x00,
     ac_cmd_turn_on = 0x01,
     ac_cmd_turn_off = 0x02,
     ac_cmd_step_horiz = 0x79,
@@ -54,6 +55,6 @@ typedef struct {
 } fujitsu_ac_state_t;
 
 
-void fujitsu_ac_ir_init(fujitsu_ac_model ac_model);
+void fujitsu_ac_ir_tx_init(fujitsu_ac_model ac_model);
 int fujitsu_ac_ir_send(fujitsu_ac_state_t *state);
 
