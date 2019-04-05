@@ -202,9 +202,8 @@ void ir_rx_task(void *_args) {
 
     fujitsu_ac_state_t state;
     while (true) {
-        uint16_t size = sizeof(state);
-        int r = ir_recv(decoder, 0, &state, &size);
-        if (r < 0) {
+        int size = ir_recv(decoder, 0, &state, sizeof(state));
+        if (size < 0) {
             printf("Bit decoding failed\n");
             continue;
         }

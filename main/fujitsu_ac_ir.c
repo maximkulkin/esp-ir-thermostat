@@ -111,20 +111,19 @@ typedef struct {
 
 static int fujitsu_ac_ir_decoder_decode(fujitsu_ac_ir_decoder_t *decoder,
                                         int16_t *pulses, uint16_t pulse_count,
-                                        void *decoded_data, uint16_t *decoded_size)
+                                        void *decode_buffer, uint16_t decode_buffer_size)
 {
-    if (*decoded_size != sizeof(fujitsu_ac_state_t))
+    if (decode_buffer_size < sizeof(fujitsu_ac_state_t))
         return -2;
 
-    fujitsu_ac_state_t *state = decoded_data;
+    fujitsu_ac_state_t *state = decode_buffer;
 
     uint8_t cmd[16];
-    uint16_t cmd_size = 16 * 8;
-    int r = decoder->generic_decoder->decode(
-        decoder->generic_decoder, pulses, pulse_count, cmd, &cmd_size
+    int cmd_size = decoder->generic_decoder->decode(
+        decoder->generic_decoder, pulses, pulse_count, cmd, 16 * 8
     );
-    if (r <= 0)
-        return r;
+    if (cmd_size <= 0)
+        return cmd_size;
 
     cmd_size = (cmd_size + 7) >> 3;
 
