@@ -120,12 +120,10 @@ static int fujitsu_ac_ir_decoder_decode(fujitsu_ac_ir_decoder_t *decoder,
 
     uint8_t cmd[16];
     int cmd_size = decoder->generic_decoder->decode(
-        decoder->generic_decoder, pulses, pulse_count, cmd, 16 * 8
+        decoder->generic_decoder, pulses, pulse_count, cmd, 16
     );
     if (cmd_size <= 0)
         return cmd_size;
-
-    cmd_size = (cmd_size + 7) >> 3;
 
     if (cmd_size < 6)
         return -1;
@@ -139,8 +137,9 @@ static int fujitsu_ac_ir_decoder_decode(fujitsu_ac_ir_decoder_t *decoder,
     case ac_cmd_step_vert:
         if ((cmd_size == 7) && (cmd[6] != (~cmd[5] & 0xff))) {
             return -1;
-        else if (cmd_size > 7)
+        } else if (cmd_size > 7) {
             return -1;
+        }
 
         state->command = cmd[5];
 
