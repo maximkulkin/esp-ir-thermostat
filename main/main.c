@@ -6,6 +6,7 @@
 #include <esp8266.h>
 #include <FreeRTOS.h>
 #include <task.h>
+#include <event_groups.h>
 
 #include <etstimer.h>
 #include <esplibs/libmain.h>
@@ -70,6 +71,9 @@ void led_init() {
 
 fujitsu_ac_state_t ac_state;
 
+EventGroupHandle_t sync_flags;
+#define SYNC_FLAGS_UPDATE (1 << 0)
+
 void update_state();
 
 
@@ -112,6 +116,9 @@ homekit_characteristic_t fan_swing_mode = HOMEKIT_CHARACTERISTIC_(
 
 
 void update_state() {
+    if ((xEventGroupGetBits(sync_flags) & SYNC_FLAGS_UPDATE) == 0)
+        return;
+
     homekit_value_t new_fan_active, new_current_state;
     uint8_t state = target_state.value.int_value;
 
@@ -211,6 +218,7 @@ void ir_rx_task(void *_args) {
             continue;
         }
 
+        xEventGroupClearBits(sync_flags, SYNC_FLAGS_UPDATE);
 
         ac_state = state;
 
@@ -283,6 +291,8 @@ void ir_rx_task(void *_args) {
             fan_active.value = new_fan_active;
             homekit_characteristic_notify(&fan_active, fan_active.value);
         }
+
+        xEventGroupSetBits(sync_flags, SYNC_FLAGS_UPDATE);
     }
 
     decoder->free(decoder);
