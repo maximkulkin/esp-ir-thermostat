@@ -157,7 +157,10 @@ void update_state() {
     ac_state.temperature = MIN(AC_MAX_TEMPERATURE, MAX(AC_MIN_TEMPERATURE, target_temperature.value.float_value));
     ac_state.swing = fan_swing_mode.value.int_value ? ac_swing_vert : ac_swing_off;
 
-    fujitsu_ac_ir_send(&ac_state);
+    int result = fujitsu_ac_ir_send(&ac_state);
+    if (result < 0) {
+        printf("Fujitsu command send failed (code %d)\n", result);
+    }
 
     if (!homekit_value_equal(&new_current_state, &current_state.value)) {
         current_state.value = new_current_state;
@@ -208,7 +211,6 @@ void ir_rx_task(void *_args) {
             continue;
         }
 
-        printf("Decoded IR command\n");
 
         ac_state = state;
 

@@ -96,7 +96,7 @@ int fujitsu_ac_ir_send(fujitsu_ac_state_t *state) {
         }
     }
 
-    printf("State: command=%d mode=%d fan=%d swing=%d temperature=%d\n",
+    printf("Sending state: command=%d mode=%d fan=%d swing=%d temperature=%d\n",
            state->command, state->mode, state->fan, state->swing, state->temperature);
 
     return ir_generic_send(&fujitsu_ac_ir_config, cmd, cmd_size);
@@ -188,6 +188,9 @@ static int fujitsu_ac_ir_decoder_decode(fujitsu_ac_ir_decoder_t *decoder,
     default:
         return -1;
     }
+
+    printf("Decoded state: command=%d mode=%d fan=%d swing=%d temperature=%d\n",
+           state->command, state->mode, state->fan, state->swing, state->temperature);
 
     return sizeof(fujitsu_ac_state_t);
 }
