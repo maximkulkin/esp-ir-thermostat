@@ -355,6 +355,42 @@ void on_wifi_ready() {
     homekit_server_init(&config);
 }
 
+bool initialized = false;
+
+void init() {
+    sync_flags = xEventGroupCreate();
+    xEventGroupSetBits(sync_flags, SYNC_FLAGS_UPDATE);
+
+    ac_state.command = ac_cmd_turn_off;
+    ac_state.temperature = 22;
+    ac_state.mode = ac_mode_auto;
+
+    ac_state.fan = ac_fan_auto;
+    ac_state.swing = ac_swing_off;
+
+    fujitsu_ac_ir_tx_init(fujitsu_ac_model_ARRAH2E);
+    ir_rx_init(IR_RX_GPIO, 300);
+    update_state();
+
+    xTaskCreate(temperature_sensor_task, "Thermostat", 256, NULL, 2, NULL);
+    xTaskCreate(ir_rx_task, "IR receiver", 1024, NULL, 2, NULL);
+
+    initialized = true;
+}
+
+void on_homekit_event(homekit_event_t event) {
+    if (event == HOMEKIT_EVENT_PAIRING_ADDED) {
+        if (!initialized) {
+            init();
+        }
+    } else if (event == HOMEKIT_EVENT_PAIRING_REMOVED) {
+        if (!homekit_is_paired()) {
+            printf("Restarting\n");
+            sdk_system_restart();
+        }
+    }
+}
+
 void create_accessory_name() {
     uint8_t macaddr[6];
     sdk_wifi_get_macaddr(STATION_IF, macaddr);
@@ -376,17 +412,7 @@ void user_init(void) {
 
     wifi_config_init("fujitsu-ac", NULL, on_wifi_ready);
 
-    ac_state.command = ac_cmd_turn_off;
-    ac_state.temperature = 22;
-    ac_state.mode = ac_mode_auto;
-
-    ac_state.fan = ac_fan_auto;
-    ac_state.swing = ac_swing_off;
-
-    fujitsu_ac_ir_tx_init(fujitsu_ac_model_ARRAH2E);
-    ir_rx_init(IR_RX_GPIO, 300);
-    update_state();
-
-    xTaskCreate(temperature_sensor_task, "Thermostat", 256, NULL, 2, NULL);
-    xTaskCreate(ir_rx_task, "IR receiver", 1024, NULL, 2, NULL);
+    if (homekit_is_paired()) {
+        init();
+    }
 }
