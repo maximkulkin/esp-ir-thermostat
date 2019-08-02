@@ -8,6 +8,66 @@
 #include <ir/generic.h>
 
 
+#define countof(x) (sizeof(x) / sizeof(*x))
+
+static const char* ac_cmd_string(ac_cmd command) {
+    static char unknown[5];
+    switch (command) {
+        case ac_cmd_stay_on: return "stay on";
+        case ac_cmd_turn_on: return "turn on";
+        case ac_cmd_turn_off: return "turn off";
+        case ac_cmd_step_horiz: return "step horiz";
+        case ac_cmd_step_vert: return "step vert";
+        default: {
+            snprintf(unknown, sizeof(unknown), "0x%02x", command & 0xff);
+            return unknown;
+        }
+    }
+}
+
+static const char* ac_mode_string(ac_mode mode) {
+    static char* strings[] = {"auto", "cool", "dry", "fan", "heat"};
+    static char unknown[5];
+    if (mode > countof(strings)) {
+        snprintf(unknown, sizeof(unknown), "0x%02x", mode & 0xff);
+        return unknown;
+    }
+
+    return strings[mode];
+}
+
+static const char* ac_fan_string(ac_fan fan) {
+    static char* strings[] = {"auto", "high", "med", "low", "quiet"};
+    static char unknown[5];
+    if (fan > countof(strings)) {
+        snprintf(unknown, sizeof(unknown), "0x%02x", fan & 0xff);
+        return unknown;
+    }
+    return strings[fan];
+}
+
+static const char* ac_swing_string(ac_swing swing) {
+    static char* strings[] = {"off", "vert", "horiz", "both"};
+    static char unknown[5];
+    if (swing > countof(strings)) {
+        snprintf(unknown, sizeof(unknown), "0x%02x", swing & 0xff);
+        return unknown;
+    }
+    return strings[swing];
+}
+
+static void print_state(const char *prompt, fujitsu_ac_state_t *state) {
+    printf(
+        "%s: command=%s mode=%s fan=%s swing=%s temperature=%d\n",
+        prompt,
+        ac_cmd_string(state->command),
+        ac_mode_string(state->mode),
+        ac_fan_string(state->fan),
+        ac_swing_string(state->swing),
+        state->temperature
+    );
+}
+
 
 static fujitsu_ac_model model;
 static ir_generic_config_t fujitsu_ac_ir_config = {
@@ -96,8 +156,7 @@ int fujitsu_ac_ir_send(fujitsu_ac_state_t *state) {
         }
     }
 
-    printf("Sending state: command=%d mode=%d fan=%d swing=%d temperature=%d\n",
-           state->command, state->mode, state->fan, state->swing, state->temperature);
+    print_state("Sending state", state);
 
     return ir_generic_send(&fujitsu_ac_ir_config, cmd, cmd_size);
 }
@@ -189,8 +248,7 @@ static int fujitsu_ac_ir_decoder_decode(fujitsu_ac_ir_decoder_t *decoder,
         return -1;
     }
 
-    printf("Decoded state: command=%d mode=%d fan=%d swing=%d temperature=%d\n",
-           state->command, state->mode, state->fan, state->swing, state->temperature);
+    print_state("Decoded state", state);
 
     return sizeof(fujitsu_ac_state_t);
 }
