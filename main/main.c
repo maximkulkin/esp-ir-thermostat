@@ -100,7 +100,7 @@ homekit_characteristic_t target_state = HOMEKIT_CHARACTERISTIC_(
 uint8_t fan = 0;
 
 void fan_active_set(homekit_value_t value) {
-    fan = value.bool_value;
+    // fan = value.bool_value;
     update_state();
 }
 
@@ -119,55 +119,78 @@ void update_state() {
     if ((xEventGroupGetBits(sync_flags) & SYNC_FLAGS_UPDATE) == 0)
         return;
 
-    homekit_value_t new_fan_active, new_current_state;
-    uint8_t state = target_state.value.int_value;
+    homekit_value_t new_current_state,
+                    new_fan_active = HOMEKIT_UINT8(1),
+                    new_rotation_speed = fan_rotation_speed.value;
 
-    ac_state.command = ac_cmd_turn_on;
-    if (state == 1) {
-        ac_state.mode = ac_mode_heat;
-        new_current_state = HOMEKIT_UINT8(1);
-        new_fan_active = HOMEKIT_UINT8(1);
-    } else if (state == 2) {
-        ac_state.mode = ac_mode_cool;
-        new_current_state = HOMEKIT_UINT8(2);
-        new_fan_active = HOMEKIT_UINT8(1);
-    } else if (state == 3) {
-        ac_state.mode = ac_mode_auto;
-        if (current_temperature.value.int_value < target_temperature.value.int_value) {
-            new_current_state = HOMEKIT_UINT8(1);
+    fujitsu_ac_state_t new_ac_state = ac_state;
+    new_ac_state.command = ac_cmd_turn_on;
+
+    switch (target_state.value.int_value) {
+        case HOMEKIT_TARGET_HEATING_COOLING_STATE_HEAT:
+            new_ac_state.mode = ac_mode_heat;
+            new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_HEAT);
+            break;
+
+        case HOMEKIT_TARGET_HEATING_COOLING_STATE_COOL:
+            new_ac_state.mode = ac_mode_cool;
+            new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_COOL);
+            break;
+
+        case HOMEKIT_TARGET_HEATING_COOLING_STATE_AUTO:
+            new_ac_state.mode = ac_mode_auto;
+            if (current_temperature.value.int_value < target_temperature.value.int_value) {
+                new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_HEAT);
+            } else {
+                new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_COOL);
+            }
+            break;
+
+        case HOMEKIT_TARGET_HEATING_COOLING_STATE_OFF:
+            if (fan) {
+                new_ac_state.mode = ac_mode_fan;
+                new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_OFF);
+                break;
+            }
+
+        default:
+            new_ac_state.mode = ac_mode_auto;
+            new_ac_state.command = ac_cmd_turn_off;
+            new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_OFF);
+            new_fan_active = HOMEKIT_UINT8(0);
+    }
+
+    if (ac_state.command == ac_cmd_turn_off &&
+            new_ac_state.command != ac_cmd_turn_off &&
+            new_ac_state.mode != ac_mode_fan)
+    {
+        new_ac_state.fan = ac_fan_auto;
+        new_rotation_speed = HOMEKIT_FLOAT(100);
+    } else {
+        uint8_t rotation_speed = (uint8_t)fan_rotation_speed.value.float_value;
+        if (rotation_speed > 99) {
+            new_ac_state.fan = ac_fan_auto;
+        } else if (rotation_speed > 75) {
+            new_ac_state.fan = ac_fan_high;
+        } else if (rotation_speed > 45) {
+            new_ac_state.fan = ac_fan_med;
+        } else if (rotation_speed > 15) {
+            new_ac_state.fan = ac_fan_low;
         } else {
-            new_current_state = HOMEKIT_UINT8(2);
+            new_ac_state.fan = ac_fan_quiet;
         }
-        new_fan_active = HOMEKIT_UINT8(1);
-    } else if (state == 0 && fan) {
-        ac_state.mode = ac_mode_fan;
-        new_current_state = HOMEKIT_UINT8(0);
-        new_fan_active = HOMEKIT_UINT8(1);
-    } else {
-        ac_state.mode = ac_mode_auto;
-        ac_state.command = ac_cmd_turn_off;
-        new_current_state = HOMEKIT_UINT8(0);
-        new_fan_active = HOMEKIT_UINT8(0);
     }
 
-    uint8_t rotation_speed = fan_rotation_speed.value.int_value;
-    if (rotation_speed > 75) {
-        ac_state.fan = ac_fan_high;
-    } else if (rotation_speed > 45) {
-        ac_state.fan = ac_fan_med;
-    } else if (rotation_speed > 15) {
-        ac_state.fan = ac_fan_low;
-    } else {
-        ac_state.fan = ac_fan_quiet;
-    }
+    new_ac_state.temperature = MIN(AC_MAX_TEMPERATURE, MAX(AC_MIN_TEMPERATURE, target_temperature.value.float_value));
+    new_ac_state.swing = fan_swing_mode.value.int_value ? ac_swing_vert : ac_swing_off;
 
-    ac_state.temperature = MIN(AC_MAX_TEMPERATURE, MAX(AC_MIN_TEMPERATURE, target_temperature.value.float_value));
-    ac_state.swing = fan_swing_mode.value.int_value ? ac_swing_vert : ac_swing_off;
-
-    int result = fujitsu_ac_ir_send(&ac_state);
+    int result = fujitsu_ac_ir_send(&new_ac_state);
     if (result < 0) {
         printf("Fujitsu command send failed (code %d)\n", result);
+        return;
     }
+
+    ac_state = new_ac_state;
 
     if (!homekit_value_equal(&new_current_state, &current_state.value)) {
         current_state.value = new_current_state;
@@ -177,6 +200,11 @@ void update_state() {
     if (!homekit_value_equal(&new_fan_active, &fan_active.value)) {
         fan_active.value = new_fan_active;
         homekit_characteristic_notify(&fan_active, fan_active.value);
+    }
+
+    if (!homekit_value_equal(&new_rotation_speed, &fan_rotation_speed.value)) {
+        fan_rotation_speed.value = new_rotation_speed;
+        homekit_characteristic_notify(&fan_rotation_speed, fan_rotation_speed.value);
     }
 }
 
@@ -197,6 +225,20 @@ void temperature_sensor_task(void *_args) {
 
             homekit_characteristic_notify(&current_temperature, current_temperature.value);
             homekit_characteristic_notify(&current_humidity, current_humidity.value);
+
+            // If in AUTO mode, update current real mode based on temperature
+            if (target_state.value.int_value == HOMEKIT_TARGET_HEATING_COOLING_STATE_AUTO) {
+                homekit_value_t new_current_state;
+                if (current_temperature.value.int_value < target_temperature.value.int_value) {
+                    new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_HEAT);
+                } else {
+                    new_current_state = HOMEKIT_UINT8(HOMEKIT_CURRENT_HEATING_COOLING_STATE_COOL);
+                }
+                if (!homekit_value_equal(&new_current_state, &current_state.value)) {
+                    current_state.value = new_current_state;
+                    homekit_characteristic_notify(&current_state, current_state.value);
+                }
+            }
         } else {
             printf("Couldn't read data from sensor\n");
         }
