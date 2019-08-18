@@ -21,9 +21,9 @@
 
 
 #define TEMPERATURE_POLL_PERIOD 10000
-#define TEMPERATURE_SENSOR_GPIO 4
+#define TEMPERATURE_SENSOR_GPIO 12
 #define LED_GPIO 2
-#define IR_RX_GPIO 12
+#define IR_RX_GPIO 5
 
 
 #define MIN(a, b) (((a) <= (b)) ? (a) : (b))
